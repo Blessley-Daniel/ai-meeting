@@ -1,0 +1,39 @@
+# =====================================================================
+# STEP 3 - AI / ML dependencies (installed on top of requirements.txt)
+#
+# Install order matters: torch must come from the CPU wheel index, or pip
+# will pull ~2 GB of CUDA libraries that are useless on a CPU-only machine.
+#
+#   cd backend
+#   .venv/bin/pip install -r requirements.txt
+#   .venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0"
+#   .venv/bin/pip install -r requirements-ai.txt
+#
+# Model weights are downloaded from Hugging Face on first use and cached
+# under ~/.cache/huggingface (they are never committed to git).
+# =====================================================================
+
+# ---------- Speech recognition ----------
+# faster-whisper runs Whisper weights through CTranslate2. On CPU with int8
+# it is roughly 4x faster than the reference openai-whisper implementation.
+
+faster-whisper>=1.1,<2.0
+
+# ---------- Transformers / fine-tuning ----------
+# torch itself is installed separately (see the header) to force the CPU wheel.
+transformers>=4.44,<5.0
+peft>=0.13
+accelerate>=1.0
+datasets>=3.0
+safetensors>=0.4
+
+# ---------- Evaluation ----------
+sentence-transformers>=3.0
+evaluate>=0.4
+jiwer>=3.0
+rouge-score>=0.1.2
+sacrebleu>=2.4
+
+# ---------- Document generation ----------
+python-docx>=1.1
+reportlab>=4.2

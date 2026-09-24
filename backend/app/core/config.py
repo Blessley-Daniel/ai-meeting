@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     whisper_compute_type: str = "int8"
     whisper_language: str | None = None
     whisper_beam_size: int = 5
+    # 0 lets CTranslate2 choose the thread count automatically.
+    whisper_cpu_threads: int = 0
 
     # ---------- Meeting information extraction ----------
     extraction_backend: Literal["transformers", "rules", "auto"] = "auto"
