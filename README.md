@@ -3,8 +3,8 @@
 Convert a recorded meeting (Google Meet, Zoom, or plain audio) into structured
 Minutes of Meeting using local, open-source AI models.
 
-**Status:** Step 1 of 16 complete — project skeleton, configuration, and a
-runnable FastAPI service with a health/environment endpoint.
+**Status:** Step 3 of 16 complete — project skeleton, upload module with SQLite
+job tracking, and the full AI stack installed and measured on CPU.
 
 ## Architecture at a glance
 
@@ -31,18 +31,35 @@ Minutes of Meeting  →  viewer / PDF / DOCX / SQLite history
 * `ffmpeg` / `ffprobe` on `PATH` — `sudo apt-get install -y ffmpeg`
 * No API keys needed; everything runs locally.
 
-## Quick start (Step 1 scope)
+## Quick start
 
 ```bash
+# 1. System dependency
+sudo apt-get install -y ffmpeg
+
+# 2. Python environment
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+
+# 3. AI stack - torch MUST come from the CPU index first, otherwise pip
+#    downloads ~2GB of CUDA libraries that are useless without a GPU.
+.venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.6.0"
+.venv/bin/pip install -r requirements-ai.txt
+
+# 4. Confirm everything works (downloads Whisper weights on first run)
+.venv/bin/python scripts/verify_environment.py
+
+# 5. Run
 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
 Open <http://localhost:8000/> for the page and
 <http://localhost:8000/api/health> for the environment report.
 Interactive API docs: <http://localhost:8000/docs>.
+
+> **On a CUDA machine:** install `torch` normally and set
+> `MMA_WHISPER_DEVICE=cuda`, `MMA_WHISPER_COMPUTE_TYPE=float16`.
 
 ## Tests
 

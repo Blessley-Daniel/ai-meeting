@@ -71,9 +71,10 @@ class Settings(BaseSettings):
 
     # ---------- Meeting information extraction ----------
     extraction_backend: Literal["transformers", "rules", "auto"] = "auto"
-    extraction_model_name: str = "google/flan-t5-base"
+    extraction_model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"
     extraction_adapter_path: str | None = None
     extraction_max_input_tokens: int = 1024
+    extraction_max_new_tokens: int = 512
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # ---------- Derived helpers ----------
