@@ -1,0 +1,20 @@
+# =====================================================================
+# STEP 1 - core web/runtime dependencies (verified on Python 3.13, Linux)
+#
+# Install with:
+#     cd backend
+#     python3 -m venv .venv
+#     .venv/bin/pip install -r requirements.txt
+#
+# The ML stack (Whisper, PyTorch, Transformers, PEFT) is added in STEP 3
+# because it is large; keeping it separate lets you boot and test the API
+# layer quickly without downloading gigabytes of wheels.
+# =====================================================================
+
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.34,<1.0
+pydantic>=2.9,<3.0
+pydantic-settings>=2.5,<3.0
+python-multipart>=0.0.12
+sqlalchemy>=2.0,<3.0
+aiofiles>=24.1

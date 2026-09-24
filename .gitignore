@@ -1,0 +1,54 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+build/
+dist/
+
+# ---------- Virtual environments ----------
+.venv/
+venv/
+env/
+
+# ---------- Environment / secrets ----------
+.env
+.env.local
+
+# ---------- Large binary assets (never commit) ----------
+# Downloaded or fine-tuned model weights
+models/*
+!models/.gitkeep
+# Uploaded meeting recordings (may contain private audio)
+uploads/*
+!uploads/.gitkeep
+# Generated PDF/DOCX reports
+generated/*
+!generated/.gitkeep
+# Raw audio extracted from videos
+datasets/raw/audio/*
+!datasets/raw/audio/.gitkeep
+
+# ---------- Databases ----------
+*.db
+*.sqlite
+*.sqlite3
+
+# ---------- Hugging Face / ML caches ----------
+.cache/
+*.safetensors
+*.bin
+*.pt
+*.ckpt
+
+# ---------- OS / editors ----------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ---------- Test / coverage ----------
+.pytest_cache/
+.coverage
+htmlcov/
