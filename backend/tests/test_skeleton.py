@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+from pathlib import Path
 
 from app.core.config import get_settings
-from app.main import app
-
-client = TestClient(app)
 
 
-def test_settings_use_project_paths() -> None:
+def test_settings_use_project_paths(app_env) -> None:
     settings = get_settings()
     assert settings.upload_dir.name == "uploads"
     assert settings.generated_dir.name == "generated"
@@ -19,7 +16,7 @@ def test_settings_use_project_paths() -> None:
     assert ".wav" in settings.allowed_extensions
 
 
-def test_health_endpoint_reports_environment() -> None:
+def test_health_endpoint_reports_environment(client) -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
 
@@ -32,7 +29,7 @@ def test_health_endpoint_reports_environment() -> None:
     assert "whisper_model_size" in body["config"]
 
 
-def test_ensure_directories_is_idempotent() -> None:
+def test_ensure_directories_is_idempotent(app_env) -> None:
     settings = get_settings()
     settings.ensure_directories()
     settings.ensure_directories()
@@ -41,8 +38,10 @@ def test_ensure_directories_is_idempotent() -> None:
 
 
 def test_storage_directories_are_gitignored() -> None:
-    """Uploads/generated output must never be committed to version control."""
-    project_root = get_settings().upload_dir.parent
+    """Uploads and generated output must never be committed to version control."""
+    project_root = Path(__file__).resolve().parents[2]
     gitignore = (project_root / ".gitignore").read_text(encoding="utf-8")
     assert "uploads/*" in gitignore
     assert "generated/*" in gitignore
+    assert "*.db" in gitignore
+    assert ".env" in gitignore

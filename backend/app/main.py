@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.database.session import init_db
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +30,10 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Prepare on-disk storage before the server starts accepting requests."""
+    """Prepare on-disk storage and database tables before serving requests."""
     settings.ensure_directories()
-    logger.info("Storage directories ready under %s", settings.upload_dir.parent)
+    init_db()
+    logger.info("Storage directories and database ready")
     yield
     logger.info("Shutting down %s", settings.app_name)
 
