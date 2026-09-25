@@ -62,3 +62,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+# ---------- Local safety copies (git bundle / source archive) ----------
+# Kept on disk so the work survives a lost environment; not part of the project.
+.local-backup/
