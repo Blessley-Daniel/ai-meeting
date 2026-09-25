@@ -87,6 +87,10 @@ Open <http://localhost:8000/> for the page and
 <http://localhost:8000/api/health> for the environment report.
 Interactive API docs: <http://localhost:8000/docs>.
 
+The frontend and the API are served by the same process, and the frontend
+calls `/api` as a relative path. It therefore talks to whatever port you
+started the server on, so the `--port` flag is the only thing to change.
+
 > **On a CUDA machine:** install `torch` normally and set
 > `MMA_WHISPER_DEVICE=cuda`, `MMA_WHISPER_COMPUTE_TYPE=float16`.
 
