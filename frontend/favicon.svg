@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Meeting minutes">
+  <rect width="32" height="32" rx="6" fill="#1f4e79" />
+  <g fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round">
+    <path d="M9 11h14" />
+    <path d="M9 16h14" />
+    <path d="M9 21h8" />
+  </g>
+</svg>

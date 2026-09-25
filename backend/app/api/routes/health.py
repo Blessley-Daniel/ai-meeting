@@ -52,5 +52,8 @@ def health() -> dict[str, Any]:
             "whisper_device": settings.whisper_device,
             "extraction_backend": settings.extraction_backend,
             "extraction_model_name": settings.extraction_model_name,
+            # Reported so the app's own ceiling can be compared against the
+            # ~16 MB body cap a Codespaces forwarded port imposes in front of it.
+            "max_upload_size_mb": settings.max_upload_size_mb,
         },
     }

@@ -1,0 +1,22 @@
+{
+  "name": "AI Meeting Minutes",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13",
+
+  // Port 8000 serves both the frontend and the API from one uvicorn process.
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Meeting Minutes (app + API)",
+      "onAutoForward": "openPreview",
+      "protocol": "http"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "ms-python.vscode-pylance"]
+    }
+  }
+}

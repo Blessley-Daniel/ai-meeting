@@ -40,6 +40,34 @@ def test_health_endpoint_detects_ffmpeg_when_installed(client) -> None:
     assert body["environment"]["ffprobe"] is True
 
 
+def test_health_reports_upload_limit(client, app_env) -> None:
+    """The app's own upload ceiling must be discoverable.
+
+    A Codespaces forwarded port imposes a much smaller body cap in front of the
+    app, so the two numbers need to be distinguishable when diagnosing a 413.
+    """
+    body = client.get("/api/health").json()
+    assert body["config"]["max_upload_size_mb"] == get_settings().max_upload_size_mb
+
+
+def test_frontend_assets_are_served(client) -> None:
+    """index.html plus the assets it references must all resolve.
+
+    A missing asset is what produced the stray browser-console 404: the page
+    referenced nothing, so the browser requested /favicon.ico and the static
+    mount correctly answered 404 for a file that did not exist.
+    """
+    index = client.get("/")
+    assert index.status_code == 200
+
+    # Every local href/src in the page must be fetchable.
+    body = index.text
+    for asset in ("style.css", "script.js", "favicon.svg"):
+        assert asset in body, f"index.html should reference {asset}"
+        response = client.get(f"/{asset}")
+        assert response.status_code == 200, f"{asset} returned {response.status_code}"
+
+
 def test_ensure_directories_is_idempotent(app_env) -> None:
     settings = get_settings()
     settings.ensure_directories()

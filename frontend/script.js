@@ -22,6 +22,42 @@
 
 const API = "/api";
 
+/**
+ * Hosts whose traffic passes through the GitHub Codespaces port-forwarding
+ * tunnel rather than reaching uvicorn directly.
+ */
+const FORWARDED_PORT_HOST_SUFFIX = ".app.github.dev";
+
+/**
+ * Approximate largest request body the Codespaces tunnel accepts.
+ *
+ * The tunnel's front-end answers an oversized upload with its own nginx 413
+ * before the request reaches this application, so MMA_MAX_UPLOAD_SIZE_MB is not
+ * the binding limit when the UI is opened through a forwarded port. GitHub has
+ * raised this over time, so it is treated as a pre-flight hint rather than a
+ * guarantee: the authoritative check remains the server's response.
+ */
+const TUNNEL_BODY_LIMIT_BYTES = 15 * 1024 * 1024;
+
+/** True when this page is being served through a Codespaces forwarded port. */
+function isForwardedPortHost() {
+  return location.hostname.endsWith(FORWARDED_PORT_HOST_SUFFIX);
+}
+
+/** Raised locally when a file cannot plausibly fit through the tunnel. */
+class UploadTooLargeError extends Error {
+  constructor(sizeBytes) {
+    super(
+      `The recording is ${formatBytes(sizeBytes)}, which is larger than the ` +
+        `${formatBytes(TUNNEL_BODY_LIMIT_BYTES)} that the Codespaces forwarded ` +
+        "port accepts."
+    );
+    this.name = "UploadTooLargeError";
+    this.status = 413;
+    this.sizeBytes = sizeBytes;
+  }
+}
+
 /** Ordered pipeline stages, matching the labels shown in the interface. */
 const STAGES = ["uploading", "extracting", "transcribing", "analysing", "generating"];
 
@@ -191,6 +227,23 @@ async function requestJSON(url, options) {
   }
 
   if (!response.ok) {
+    // A forwarded-port tunnel (GitHub Codespaces / VS Code) rejects an
+    // oversized body itself and returns an HTML nginx page, not our JSON. The
+    // raw HTML is unhelpful in the UI, so translate that specific case.
+    const looksLikeProxyPage = /<html|<\/?center>|nginx/i.test(text);
+    const isProxy413 = response.status === 413 && (payload === null || looksLikeProxyPage);
+
+    if (isProxy413) {
+      const error = new Error(
+        "The request body was rejected before reaching the application " +
+          "(HTTP 413). This limit comes from the network front-end in front " +
+          "of the server, not from the application itself."
+      );
+      error.status = 413;
+      error.fromProxy = true;
+      throw error;
+    }
+
     // FastAPI reports errors as {detail: ...}; fall back to the raw body.
     const detail =
       (payload && (payload.detail || payload.message)) ||
@@ -484,6 +537,13 @@ async function uploadRecording() {
   const form = new FormData();
   form.append("file", state.file, state.file.name);
 
+  // Warn before spending time on a transfer the tunnel will reject anyway.
+  // Only applies on a forwarded-port host; on localhost the app's own limit is
+  // the only ceiling and is enforced by the server.
+  if (isForwardedPortHost() && state.file.size > TUNNEL_BODY_LIMIT_BYTES) {
+    throw new UploadTooLargeError(state.file.size);
+  }
+
   // Let the browser set the multipart boundary; do not set Content-Type.
   return requestJSON(`${API}/meetings`, { method: "POST", body: form });
 }
@@ -644,8 +704,17 @@ function hintForFailure(message) {
   if (text.includes("unsupported")) {
     return "Convert the recording to MP4, MKV, WebM, WAV, MP3 or M4A and try again.";
   }
-  if (text.includes("too large")) {
-    return "Trim the recording, or raise MMA_MAX_UPLOAD_SIZE_MB on the server.";
+  if (
+    text.includes("too large") ||
+    text.includes("413") ||
+    text.includes("forwarded port")
+  ) {
+    return (
+      "If you are using a Codespaces forwarded port, the tunnel caps the " +
+      "request body at about 16 MB regardless of the app's own limit. " +
+      "Use a shorter recording, or run the app on a local port and open " +
+      "http://localhost:8000 directly."
+    );
   }
   if (text.includes("empty") || text.includes("no speech")) {
     return "Whisper found no speech in the audio. Check that the meeting was audible.";
