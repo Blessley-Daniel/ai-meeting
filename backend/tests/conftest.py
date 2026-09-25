@@ -37,6 +37,9 @@ def app_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Run the app against a throwaway database and upload directory."""
     monkeypatch.setenv("MMA_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
     monkeypatch.setenv("MMA_UPLOAD_DIR", str(tmp_path / "uploads"))
+    # audio_dir is configured independently of upload_dir, so it must be
+    # redirected too; otherwise tests write into the project's real tree.
+    monkeypatch.setenv("MMA_AUDIO_DIR", str(tmp_path / "derived" / "audio"))
     monkeypatch.setenv("MMA_GENERATED_DIR", str(tmp_path / "generated"))
     monkeypatch.setenv("MMA_MAX_UPLOAD_SIZE_MB", "1")
 

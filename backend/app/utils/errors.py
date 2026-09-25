@@ -70,3 +70,18 @@ class NoAudioStreamError(MeetingMinutesError):
             f"{filename!r} has no audio stream. "
             "Please upload a recording that contains speech."
         )
+
+
+class TranscriptionError(MeetingMinutesError):
+    """Speech recognition could not run or could not decode the audio."""
+
+
+class EmptyTranscriptError(MeetingMinutesError):
+    """The audio decoded successfully but contains no recognisable speech."""
+
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+        super().__init__(
+            f"No speech was recognised in {filename!r}. The recording may be "
+            "silent, or contain only music or background noise."
+        )

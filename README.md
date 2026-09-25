@@ -25,6 +25,29 @@ Minutes of Meeting  →  viewer / PDF / DOCX / SQLite history
 * **Ours:** the dataset, the extraction prompt/schema and validators, the
   MoM renderer, the web application, and the evaluation harness.
 
+## Pipeline progress
+
+Each stage is a separate service module behind its own endpoint, so the
+pipeline can be exercised stage by stage while it is being built. Status
+transitions are persisted on the meeting row, which is what lets the UI show
+progress:
+
+| Stage | Endpoint | Status before → after |
+|---|---|---|
+| Upload | `POST /api/meetings` | — → `uploaded` |
+| Audio extraction | `POST /api/meetings/{id}/extract-audio` | `uploaded` → `audio_extracted` |
+| Transcription | `POST /api/meetings/{id}/transcribe` | `audio_extracted` → `transcribed` |
+| Extraction (NLP) | _not yet implemented_ | — |
+| MoM generation | _not yet implemented_ | — |
+
+Any stage that fails sets the meeting to `failed` and stores a human-readable
+reason in `error_message`. The response is still HTTP 200, because the request
+succeeded even though the media could not be processed.
+
+Storage is split by purpose: `uploads/` holds raw input, `derived/` holds
+intermediate artefacts such as extracted audio, and `generated/` holds
+finished PDF/DOCX deliverables.
+
 ## Requirements
 
 * Python 3.11–3.13 (tested on 3.13)

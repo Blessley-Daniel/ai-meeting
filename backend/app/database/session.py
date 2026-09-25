@@ -61,6 +61,6 @@ def init_db() -> None:
     """
     # Importing the models registers them on Base.metadata.
     from app.database.base import Base
-    from app.models import meeting  # noqa: F401
+    from app.models import meeting, transcript  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

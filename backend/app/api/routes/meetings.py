@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.database.session import get_db
 from app.models.meeting import Meeting, MeetingStatus
-from app.schemas.meeting import AudioExtractionResult, MeetingList, MeetingRead
+from app.schemas.meeting import (
+    AudioExtractionResult,
+    MeetingList,
+    MeetingRead,
+    TranscriptRead,
+    TranscriptionResultOut,
+)
 from app.services import pipeline, storage
 from app.utils.errors import (
     EmptyFileError,
@@ -128,6 +134,61 @@ async def extract_audio_endpoint(
         succeeded=meeting.status is MeetingStatus.AUDIO_EXTRACTED,
         error_message=meeting.error_message,
     )
+
+
+@router.post(
+    "/{meeting_id}/transcribe",
+    response_model=TranscriptionResultOut,
+    summary="Transcribe the extracted audio with Whisper",
+    responses={
+        404: {"description": "Unknown meeting id"},
+        409: {"description": "Audio has not been extracted yet"},
+    },
+)
+async def transcribe_endpoint(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+) -> TranscriptionResultOut:
+    """Run the speech-recognition stage.
+
+    Whisper is synchronous and CPU-bound, so it runs in a worker thread to
+    keep the event loop responsive.
+    """
+    meeting = _get_or_404(db, meeting_id)
+
+    if meeting.status is not MeetingStatus.AUDIO_EXTRACTED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Meeting {meeting_id} is in state {meeting.status.value!r}; "
+            "transcription requires the 'audio_extracted' state.",
+        )
+
+    meeting = await run_in_threadpool(pipeline.transcribe_meeting, db, meeting)
+
+    transcript = TranscriptRead.model_validate(meeting.transcript) if meeting.transcript else None
+    return TranscriptionResultOut(
+        meeting=MeetingRead.model_validate(meeting),
+        succeeded=meeting.status is MeetingStatus.TRANSCRIBED,
+        error_message=meeting.error_message,
+        transcript=transcript,
+    )
+
+
+@router.get(
+    "/{meeting_id}/transcript",
+    response_model=TranscriptRead,
+    summary="Get the stored transcript",
+    responses={404: {"description": "No transcript exists for this meeting"}},
+)
+def get_transcript(meeting_id: int, db: Session = Depends(get_db)) -> TranscriptRead:
+    meeting = _get_or_404(db, meeting_id)
+
+    if meeting.transcript is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"No transcript has been produced for meeting {meeting_id}.",
+        )
+    return TranscriptRead.model_validate(meeting.transcript)
 
 
 @router.get("/{meeting_id}", response_model=MeetingRead, summary="Get one meeting")

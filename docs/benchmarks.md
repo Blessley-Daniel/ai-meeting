@@ -85,3 +85,68 @@ making hallucination measurable.
 Default extraction model: **`Qwen/Qwen2.5-0.5B-Instruct`** — the best
 accuracy/speed trade-off measured here. The architecture keeps the model
 swappable, and the surrounding validation layer does not trust model output.
+
+## 3. End-to-end transcription on multi-speaker audio (Step 5-6)
+
+Input: `datasets/raw/sample_meeting/sample_meeting.mp4`, a **synthetic**
+53.2 s recording built by `scripts/make_sample_recording.py`. Five turns are
+spoken with different voices (`en-us`, `en-gb`) to simulate distinct
+participants. The spoken text is the ground truth, so WER can be computed
+properly. This is reproducible: regenerate the audio and the reference text
+together with one command.
+
+| Metric | Value |
+|---|---|
+| Model | `base`, `int8`, CPU, VAD enabled |
+| Detected language | `en` (probability 0.933) |
+| Segments produced | 12 |
+| Words transcribed | 109 |
+| Reference words | 108 |
+| Transcription time | ~2.8 s for 53.2 s audio |
+| **Real-time factor** | **~19× faster than real time** |
+| **Word Error Rate** | **0.0741 (7.4%)** |
+
+Error breakdown: 102 correct, 5 substitutions, 1 deletion, 2 insertions.
+Two independent regenerations of the sample gave the *same* WER (0.0741),
+with only the form of the PostgreSQL error changing (`Post-URSQL` vs
+`Post-GreSQL`). The metric is stable across runs; the specific words vary.
+
+### What the errors actually were
+
+Every error involved a proper noun or a technical term — never an ordinary
+English word:
+
+| # | Reference | ASR output |
+|---|---|---|
+| 1 | weekly project **sync** | weekly project **seeing** |
+| 2 | login and **signup endpoints** | login and **cyberpaint** |
+| 3 | Great work **Priya** | Great work **prior** |
+| 4 | **PostgreSQL** (mention 1) | **Post-GreSQL** |
+| 5 | **PostgreSQL** (mention 2) | **Post-GreSQL** |
+| 6 | unstressed *the* / *a* | dropped / inserted |
+
+### Interpretation (for the report)
+
+1. **Rare and out-of-vocabulary words dominate the error rate.** `Priya`,
+   `PostgreSQL` and `signup endpoints` were misrecognised, while all common
+   vocabulary was transcribed correctly. This matches the general finding
+   that ASR errors concentrate on names and domain-specific terms.
+2. **Errors are consistent, not random.** `PostgreSQL` was mangled the *same
+   way* on every occurrence. That consistency matters: a downstream stage
+   *could* correct it using a glossary of expected names and terms, because
+   the same corruption repeats.
+3. **A name error propagates.** `Priya` → `prior` means the extraction stage
+   would not see Priya as a participant at all, and could later attribute her
+   action item to the wrong person. This is a genuine pipeline-level risk, not
+   just a transcription blemish.
+4. **Caveat on the number.** 7.4% WER is measured on **synthetic speech from a
+   TTS engine**. TTS speech is cleaner and more evenly paced than human
+   conversation. Do **not** present 7.4% as the system's accuracy on real
+   meetings. Reported literature for Whisper `base` on real meeting audio
+   (e.g. AMI) is substantially worse. Use this figure as a pipeline smoke test
+   and compute a real WER on the AMI corpus for the report (see the evaluation
+   step).
+5. **Cost of a larger model.** Because errors concentrate in rare words, a
+   larger Whisper (`small`/`medium`) would likely reduce them — at roughly
+   linear cost in time. That trade-off should be measured, not assumed; the
+   evaluation step will compare sizes on the same audio.

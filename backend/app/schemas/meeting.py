@@ -58,3 +58,44 @@ class ErrorResponse(BaseModel):
 
     detail: str
     code: str
+
+
+class TranscriptSegmentRead(BaseModel):
+    """One timestamped span of recognised speech."""
+
+    index: int
+    start: float
+    end: float
+    text: str
+    confidence: float | None = None
+
+
+class TranscriptRead(BaseModel):
+    """The speech-recognition output for a meeting."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    meeting_id: int
+    text: str
+    segments: list[TranscriptSegmentRead]
+    language: str | None
+    language_probability: float | None
+    duration_seconds: float | None
+    model_name: str | None
+    processing_seconds: float | None
+    segment_count: int
+    word_count: int
+    created_at: datetime
+
+
+class TranscriptionResultOut(BaseModel):
+    """Outcome of running the transcription stage.
+
+    Mirrors :class:`AudioExtractionResult`: HTTP 200 even when the *job*
+    failed, with the reason in ``error_message``.
+    """
+
+    meeting: MeetingRead
+    succeeded: bool
+    error_message: str | None = None
+    transcript: TranscriptRead | None = None

@@ -6,7 +6,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum as SAEnum, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
 from app.database.session import utcnow
@@ -19,6 +19,7 @@ class MeetingStatus(str, enum.Enum):
     EXTRACTING_AUDIO = "extracting_audio"
     AUDIO_EXTRACTED = "audio_extracted"
     TRANSCRIBING = "transcribing"
+    TRANSCRIBED = "transcribed"
     ANALYSING = "analysing"
     GENERATING = "generating"
     COMPLETED = "completed"
@@ -71,6 +72,17 @@ class Meeting(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow, onupdate=utcnow
+    )
+
+    # One-to-one with the transcript produced by the speech-recognition stage.
+    # cascade="all, delete-orphan" means deleting a meeting removes its
+    # transcript rather than leaving an orphan row.
+    transcript = relationship(
+        "Transcript",
+        back_populates="meeting",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
     @property

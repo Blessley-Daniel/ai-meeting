@@ -1,0 +1,34 @@
+{
+  "source": "synthetic",
+  "generator": "espeak-ng 1.52.0 + ffmpeg",
+  "language": "en",
+  "note": "Synthetic audio generated locally by scripts/make_sample_recording.py. Not a real human meeting recording. Text below is what was actually spoken, so it is a valid reference for computing WER.",
+  "turns": [
+    {
+      "voice": "en-us",
+      "speed_wpm": 145,
+      "text": "Good morning everyone. Let's start the weekly project sync. First item, the authentication module. I have finished the login and signup endpoints and they are working in the staging environment."
+    },
+    {
+      "voice": "en-gb",
+      "speed_wpm": 150,
+      "text": "Great work Priya. I will review the code and run the security tests on Wednesday. Also we need to decide on the database."
+    },
+    {
+      "voice": "en-us",
+      "speed_wpm": 140,
+      "text": "The team decided to use PostgreSQL for the main database. Rahul will update the schema documentation by next Monday."
+    },
+    {
+      "voice": "en-gb",
+      "speed_wpm": 150,
+      "text": "Agreed. I will also prepare the deployment checklist. No deadlines are needed for that one yet."
+    },
+    {
+      "voice": "en-us",
+      "speed_wpm": 145,
+      "text": "Good. So to conclude, the authentication work is on track, PostgreSQL is confirmed, and we will meet again next week."
+    }
+  ],
+  "transcript": "Good morning everyone. Let's start the weekly project sync. First item, the authentication module. I have finished the login and signup endpoints and they are working in the staging environment. Great work Priya. I will review the code and run the security tests on Wednesday. Also we need to decide on the database. The team decided to use PostgreSQL for the main database. Rahul will update the schema documentation by next Monday. Agreed. I will also prepare the deployment checklist. No deadlines are needed for that one yet. Good. So to conclude, the authentication work is on track, PostgreSQL is confirmed, and we will meet again next week."
+}

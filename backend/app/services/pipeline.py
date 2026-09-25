@@ -3,7 +3,8 @@
 Each stage lives in its own service module; this module is only responsible
 for moving a :class:`Meeting` through its lifecycle states:
 
-    uploaded -> extracting_audio -> audio_extracted -> transcribing -> ...
+    uploaded -> extracting_audio -> audio_extracted -> transcribing
+             -> transcribed -> analysing -> ...
 
 Design choices worth noting:
 
@@ -11,9 +12,12 @@ Design choices worth noting:
   job to ``failed`` and stores the reason in ``error_message``. The API then
   returns a normal 200 response describing the failure, so one bad file never
   takes the server down.
-* **Blocking work runs in a threadpool.** ffmpeg and, later, the ML models are
+* **Blocking work runs in a threadpool.** ffmpeg and the ML models are
   synchronous and CPU-bound. Running them directly in an ``async def`` endpoint
   would block the event loop and freeze every other request.
+* **Stages are individually callable.** Keeping each stage as its own function
+  makes it testable in isolation and lets the API expose them separately while
+  the pipeline is still being built.
 """
 
 from __future__ import annotations
@@ -25,8 +29,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.meeting import Meeting, MeetingStatus
-from app.services import audio
-from app.utils.errors import MediaProcessingError, NoAudioStreamError
+from app.models.transcript import Transcript
+from app.services import audio, transcription
+from app.utils.errors import (
+    EmptyTranscriptError,
+    MediaProcessingError,
+    NoAudioStreamError,
+    TranscriptionError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,5 +100,74 @@ def extract_audio_for_meeting(db: Session, meeting: Meeting) -> Meeting:
         meeting.id,
         info.duration_seconds or 0.0,
         destination.name,
+    )
+    return meeting
+
+
+def transcribe_meeting(db: Session, meeting: Meeting) -> Meeting:
+    """Run the speech-recognition stage for ``meeting``.
+
+    Requires the audio-extraction stage to have completed. Blocking: call via
+    ``run_in_threadpool``.
+
+    Re-running replaces any existing transcript for the meeting, so a failed
+    attempt can be retried without duplicating rows.
+    """
+    settings = get_settings()
+
+    _set_status(db, meeting, MeetingStatus.TRANSCRIBING)
+
+    if not meeting.audio_path:
+        message = (
+            "No extracted audio is available for this meeting. "
+            "Run audio extraction first."
+        )
+        _set_status(db, meeting, MeetingStatus.FAILED, error=message)
+        return meeting
+
+    audio_file = Path(meeting.audio_path)
+
+    try:
+        result = transcription.transcribe_audio(audio_file, settings)
+    except EmptyTranscriptError:
+        # Report the user's original filename rather than our internal
+        # meeting_<id>.wav, so the message is meaningful to them.
+        message = (
+            f"No speech was recognised in {meeting.original_filename!r}. "
+            "The recording may be silent, or contain only music or "
+            "background noise."
+        )
+        _set_status(db, meeting, MeetingStatus.FAILED, error=message)
+        logger.warning("Meeting %s produced an empty transcript", meeting.id)
+        return meeting
+    except TranscriptionError as exc:
+        _set_status(db, meeting, MeetingStatus.FAILED, error=str(exc))
+        logger.error("Transcription failed for meeting %s: %s", meeting.id, exc)
+        return meeting
+
+    existing = meeting.transcript
+    if existing is not None:
+        db.delete(existing)
+        db.flush()
+
+    record = Transcript(
+        meeting_id=meeting.id,
+        text=result.text,
+        segments=transcription.segments_to_dicts(result.segments),
+        language=result.language,
+        language_probability=result.language_probability,
+        duration_seconds=result.duration_seconds,
+        model_name=f"faster-whisper:{result.model_size}",
+        processing_seconds=result.processing_seconds,
+    )
+    db.add(record)
+
+    _set_status(db, meeting, MeetingStatus.TRANSCRIBED)
+
+    logger.info(
+        "Meeting %s: transcript with %d segments, %d words",
+        meeting.id,
+        len(result.segments),
+        len(result.text.split()),
     )
     return meeting

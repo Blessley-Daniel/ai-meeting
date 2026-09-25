@@ -44,8 +44,15 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
 
     # ---------- Storage locations ----------
+    # Three tiers, kept separate so each directory has one meaning:
+    #   uploads/   the files a user actually uploaded (raw input, never derived)
+    #   derived/   intermediate artefacts computed from them (extracted audio)
+    #   generated/ the finished deliverables offered for download (PDF/DOCX)
+    # Keeping derived audio out of uploads/ means "is the upload directory
+    # clean?" stays a meaningful check, and partial-upload cleanup can be
+    # verified without stepping over our own subdirectories.
     upload_dir: Path = PROJECT_ROOT / "uploads"
-    audio_dir: Path = PROJECT_ROOT / "uploads" / "audio"
+    audio_dir: Path = PROJECT_ROOT / "derived" / "audio"
     generated_dir: Path = PROJECT_ROOT / "generated"
     models_dir: Path = PROJECT_ROOT / "models"
     dataset_dir: Path = PROJECT_ROOT / "datasets" / "processed"
