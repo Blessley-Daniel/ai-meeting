@@ -75,6 +75,48 @@ def test_probe_rejects_non_media_file(tmp_path: Path, app_env) -> None:
         audio.probe_media(fake)
 
 
+def test_probe_error_does_not_leak_absolute_path(tmp_path: Path, app_env) -> None:
+    """The message is shown to the user, so it must not expose server layout.
+
+    ffprobe echoes the absolute path it was given; that is an internal detail
+    and would also disclose the deployment directory structure.
+    """
+    fake = tmp_path / "leaky.mp4"
+    fake.write_bytes(b"not media")
+
+    with pytest.raises(MediaProcessingError) as excinfo:
+        audio.probe_media(fake)
+
+    message = str(excinfo.value)
+    assert str(tmp_path) not in message
+    assert "leaky.mp4" in message
+
+
+def test_sanitise_ffmpeg_message_handles_empty_stderr(tmp_path: Path) -> None:
+    """ffmpeg sometimes fails silently; the caller still needs a reason."""
+    path = tmp_path / "clip.mp4"
+    assert audio._sanitise_ffmpeg_message("", path) == "unknown error"
+    assert audio._sanitise_ffmpeg_message("   ", path) == "unknown error"
+
+
+def test_sanitise_ffmpeg_message_rewrites_paths(tmp_path: Path) -> None:
+    path = tmp_path / "clip.mp4"
+    raw = f"{path}: Invalid data found when processing input"
+    cleaned = audio._sanitise_ffmpeg_message(raw, path)
+    assert str(tmp_path) not in cleaned
+    # The caller already names the file, so the echoed prefix is removed.
+    assert cleaned == "Invalid data found when processing input"
+
+
+def test_sanitise_ffmpeg_message_keeps_inner_filename(tmp_path: Path) -> None:
+    """A filename that appears mid-message is kept, just path-free."""
+    path = tmp_path / "clip.mp4"
+    raw = f"error opening {path} while reading"
+    cleaned = audio._sanitise_ffmpeg_message(raw, path)
+    assert str(tmp_path) not in cleaned
+    assert "clip.mp4" in cleaned
+
+
 def test_probe_rejects_missing_file(tmp_path: Path, app_env) -> None:
     with pytest.raises(MediaProcessingError):
         audio.probe_media(tmp_path / "does_not_exist.mp4")

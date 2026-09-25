@@ -3,8 +3,11 @@
 Convert a recorded meeting (Google Meet, Zoom, or plain audio) into structured
 Minutes of Meeting using local, open-source AI models.
 
-**Status:** Step 3 of 16 complete — project skeleton, upload module with SQLite
-job tracking, and the full AI stack installed and measured on CPU.
+**Status:** Steps 1–13 complete. The end-to-end pipeline runs: upload →
+audio extraction → transcription → AI extraction → Minutes of Meeting →
+PDF/DOCX export → SQLite history. Step 14 (optional LoRA fine-tuning) and
+Step 15 (evaluation harness) are implemented and runnable; see
+`training/README.md` and the evaluation results in `docs/`.
 
 ## Architecture at a glance
 
@@ -37,8 +40,11 @@ progress:
 | Upload | `POST /api/meetings` | — → `uploaded` |
 | Audio extraction | `POST /api/meetings/{id}/extract-audio` | `uploaded` → `audio_extracted` |
 | Transcription | `POST /api/meetings/{id}/transcribe` | `audio_extracted` → `transcribed` |
-| Extraction (NLP) | _not yet implemented_ | — |
-| MoM generation | _not yet implemented_ | — |
+| Extraction (NLP) | `POST /api/meetings/{id}/analyse` | `transcribed` → `analysed` |
+| MoM generation | `POST /api/meetings/{id}/generate` | `analysed` → `completed` |
+| Export | `GET /api/meetings/{id}/export?format=pdf\|docx` | — |
+| One-shot run | `POST /api/meetings/{id}/process` | any → `completed` |
+| History | `GET /api/meetings` | — |
 
 Any stage that fails sets the meeting to `failed` and stores a human-readable
 reason in `error_message`. The response is still HTTP 200, because the request

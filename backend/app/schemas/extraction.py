@@ -143,7 +143,7 @@ class MeetingExtraction(BaseModel):
     def _normalise_action_items(cls, value: object) -> list[ActionItem]:
         if value is None:
             return []
-        if isinstance(value, dict):
+        if isinstance(value, dict) or isinstance(value, ActionItem):
             value = [value]
         if not isinstance(value, (list, tuple)):
             return []
@@ -151,6 +151,20 @@ class MeetingExtraction(BaseModel):
         items: list[ActionItem] = []
         seen: set[str] = set()
         for raw in value:
+            # Already-constructed instances must be accepted as-is. Earlier
+            # this validator only handled dicts and strings, so passing
+            # ActionItem objects into the constructor silently discarded
+            # every one of them.
+            if isinstance(raw, ActionItem):
+                item = raw
+                if not item.is_actionable:
+                    continue
+                key = item.task.lower()
+                if key not in seen:
+                    seen.add(key)
+                    items.append(item)
+                continue
+
             if isinstance(raw, str):
                 raw = {"task": raw}
             if not isinstance(raw, dict):

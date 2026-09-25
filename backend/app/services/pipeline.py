@@ -148,22 +148,34 @@ def transcribe_meeting(db: Session, meeting: Meeting) -> Meeting:
         logger.error("Transcription failed for meeting %s: %s", meeting.id, exc)
         return meeting
 
-    existing = meeting.transcript
-    if existing is not None:
-        db.delete(existing)
-        db.flush()
+    # A retry must refresh the existing row rather than delete and recreate it.
+    # Deleting through the session leaves the old instance attached to
+    # meeting.transcript, and the later db.add(meeting) then tries to cascade
+    # to a deleted object and raises. Mutating in place keeps both sides of the
+    # relationship consistent, and matches how the analysis stage upserts.
+    record = meeting.transcript
+    if record is None:
+        record = Transcript(meeting_id=meeting.id)
 
-    record = Transcript(
-        meeting_id=meeting.id,
-        text=result.text,
-        segments=transcription.segments_to_dicts(result.segments),
-        language=result.language,
-        language_probability=result.language_probability,
-        duration_seconds=result.duration_seconds,
-        model_name=f"faster-whisper:{result.model_size}",
-        processing_seconds=result.processing_seconds,
-    )
+    record.text = result.text
+    record.segments = transcription.segments_to_dicts(result.segments)
+    record.language = result.language
+    record.language_probability = result.language_probability
+    record.duration_seconds = result.duration_seconds
+    record.model_name = f"faster-whisper:{result.model_size}"
+    record.processing_seconds = result.processing_seconds
     db.add(record)
+
+    # A new transcript invalidates the analysis and minutes derived from it.
+    # Their rows are mutated, not deleted, so the relationship never holds a
+    # deleted instance.
+    stale_minutes = meeting.minutes
+    if stale_minutes is not None:
+        stale_minutes.extraction = {}
+        stale_minutes.text = ""
+        stale_minutes.pdf_path = None
+        stale_minutes.docx_path = None
+        db.add(stale_minutes)
 
     _set_status(db, meeting, MeetingStatus.TRANSCRIBED)
 

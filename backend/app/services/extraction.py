@@ -222,8 +222,12 @@ def _generate(prompt: str, settings: Settings) -> str:
             **inputs,
             max_new_tokens=settings.extraction_max_new_tokens,
             do_sample=False,          # greedy: deterministic and reproducible
+            # The model's stored generation config sets sampling parameters.
+            # With do_sample=False they are unused, and transformers warns
+            # about them on every call; None marks them as deliberately unset.
             temperature=None,
             top_p=None,
+            top_k=None,
             pad_token_id=tokenizer.pad_token_id,
             repetition_penalty=1.05,
         )

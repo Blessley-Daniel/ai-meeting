@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from app.schemas.extraction import NOT_SPECIFIED
 from app.services.mom import MomDocument
 from app.utils.errors import DocumentExportError
 
@@ -337,9 +338,16 @@ def export_pdf(mom: MomDocument, path: Path) -> Path:
 
 
 def safe_stem(text: str, fallback: str = "meeting_minutes", max_length: int = 60) -> str:
-    """Make a filesystem-safe filename stem out of arbitrary text."""
+    """Make a filesystem-safe filename stem out of arbitrary text.
+
+    The 'Not specified' sentinel is treated as empty: an export of a nameless
+    meeting should be called ``meeting_1`` rather than ``not_specified_1``,
+    which would be confusing in a downloads folder full of files.
+    """
     import re
 
+    if text and text.strip().lower() == NOT_SPECIFIED.lower():
+        text = ""
     stem = re.sub(r"[^A-Za-z0-9]+", "_", text or "").strip("_")
     stem = re.sub(r"_+", "_", stem).lower()
     if not stem:

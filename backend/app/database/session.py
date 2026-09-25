@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from datetime import datetime, timezone
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
@@ -25,6 +25,26 @@ engine = create_engine(
     pool_pre_ping=True,
     future=True,
 )
+
+
+if settings.database_url.startswith("sqlite"):
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+        """Turn on SQLite foreign-key enforcement for every connection.
+
+        SQLite ignores ``ON DELETE CASCADE`` and other referential actions
+        unless this pragma is set, and it is off by default. Without it the
+        parent/child relationships in this schema are advisory only: deleting a
+        meeting would silently leave its transcript, minutes and export rows
+        behind. Those orphans are not just wasted space; if SQLite later reuses
+        the freed primary key, a new meeting can inherit the stale rows.
+        """
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
 
 SessionLocal = sessionmaker(
     bind=engine,

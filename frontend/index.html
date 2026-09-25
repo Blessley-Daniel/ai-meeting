@@ -1,14 +1,243 @@
 <!DOCTYPE html>
-<!-- Placeholder shell. The full upload + MoM viewer UI is built in Step 16. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AI-Based Meeting Minutes Generator</title>
+    <meta
+      name="description"
+      content="Convert a recorded meeting into structured Minutes of Meeting using local open-source AI models."
+    />
+    <link rel="stylesheet" href="style.css" />
   </head>
-  <body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto">
-    <h1>AI-Based Meeting Minutes Generator</h1>
-    <p>Backend skeleton is running. Interface coming in Step 16.</p>
-    <p><a href="/api/health">Check /api/health</a></p>
+  <body>
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">MoM</span>
+          <div>
+            <h1>AI-Based Meeting Minutes Generator</h1>
+            <p class="tagline">
+              Recording in, structured minutes out — speech recognition and
+              information extraction run locally.
+            </p>
+          </div>
+        </div>
+        <span class="badge" id="model-badge" title="Models used on this machine">
+          loading models…
+        </span>
+      </div>
+    </header>
+
+    <main class="wrap layout">
+      <div class="primary">
+        <!-- Upload ---------------------------------------------------- -->
+        <section class="card" aria-labelledby="upload-heading">
+          <h2 id="upload-heading">Upload a meeting recording</h2>
+
+          <div
+            class="dropzone"
+            id="dropzone"
+            role="button"
+            tabindex="0"
+            aria-describedby="upload-hint"
+          >
+            <input
+              type="file"
+              id="file-input"
+              accept="audio/*,video/*,.mp4,.mkv,.webm,.mov,.m4a,.wav,.mp3,.ogg,.flac"
+              hidden
+            />
+            <svg class="dropzone-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 16v2a2 2 0 002 2h10a2 2 0 002-2v-2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <p class="dropzone-title" id="file-label">
+              Drop a Google Meet / Zoom recording here, or click to choose
+            </p>
+            <p class="dropzone-hint" id="upload-hint">
+              MP4, MKV, MOV, WebM, WAV, MP3, M4A, OGG or FLAC · maximum 500 MB
+            </p>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="btn btn-primary" id="generate-btn" disabled>
+              Generate Minutes
+            </button>
+            <button type="button" class="btn btn-ghost" id="clear-btn" hidden>
+              Start over
+            </button>
+          </div>
+
+          <noscript>
+            <p class="notice notice-error">
+              This interface needs JavaScript to upload and process a recording.
+            </p>
+          </noscript>
+        </section>
+
+        <!-- Progress -------------------------------------------------- -->
+        <section class="card" id="progress-card" hidden aria-labelledby="progress-heading">
+          <h2 id="progress-heading">Processing status</h2>
+          <ol class="steps" id="steps">
+            <li class="step" data-stage="uploading">
+              <span class="step-dot"></span><span class="step-label">Uploading</span>
+            </li>
+            <li class="step" data-stage="extracting">
+              <span class="step-dot"></span><span class="step-label">Extracting audio</span>
+            </li>
+            <li class="step" data-stage="transcribing">
+              <span class="step-dot"></span><span class="step-label">Transcribing</span>
+            </li>
+            <li class="step" data-stage="analysing">
+              <span class="step-dot"></span><span class="step-label">Analysing meeting</span>
+            </li>
+            <li class="step" data-stage="generating">
+              <span class="step-dot"></span><span class="step-label">Generating minutes</span>
+            </li>
+          </ol>
+          <p class="progress-note" id="progress-note" role="status" aria-live="polite">
+            Waiting to start…
+          </p>
+          <div class="progress-bar" aria-hidden="true">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+        </section>
+
+        <!-- Error ---------------------------------------------------- -->
+        <section class="card notice notice-error" id="error-card" hidden role="alert">
+          <h2>Something went wrong</h2>
+          <p id="error-message"></p>
+          <p class="small" id="error-hint"></p>
+        </section>
+
+        <!-- Results -------------------------------------------------- -->
+        <section class="results" id="results" hidden>
+          <div class="card">
+            <div class="results-head">
+              <div>
+                <h2 id="mom-title">Minutes of Meeting</h2>
+                <p class="meta" id="mom-meta"></p>
+              </div>
+              <div class="actions actions-inline">
+                <button type="button" class="btn btn-primary" id="pdf-btn">
+                  Download PDF
+                </button>
+                <button type="button" class="btn btn-secondary" id="docx-btn">
+                  Download DOCX
+                </button>
+                <button type="button" class="btn btn-ghost" id="transcript-btn">
+                  View Transcript
+                </button>
+              </div>
+            </div>
+            <dl class="facts" id="mom-facts"></dl>
+          </div>
+
+          <div class="card" id="overview-card">
+            <h3>Meeting Overview</h3>
+            <p id="overview-text" class="prose"></p>
+          </div>
+
+          <div class="card" id="discussion-card">
+            <h3>Key Discussion Points</h3>
+            <ul class="bullets" id="discussion-list"></ul>
+          </div>
+
+          <div class="card" id="decisions-card">
+            <h3>Decisions Made</h3>
+            <ul class="bullets" id="decisions-list"></ul>
+          </div>
+
+          <div class="card" id="actions-card">
+            <h3>Action Items</h3>
+            <div class="table-scroll">
+              <table class="actions-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Task</th>
+                    <th scope="col">Responsible Person</th>
+                    <th scope="col">Deadline</th>
+                  </tr>
+                </thead>
+                <tbody id="actions-body"></tbody>
+              </table>
+            </div>
+            <p class="small" id="actions-note" hidden></p>
+          </div>
+
+          <div class="card" id="conclusion-card">
+            <h3>Conclusion</h3>
+            <p id="conclusion-text" class="prose"></p>
+          </div>
+
+          <div class="card provenance" id="provenance-card">
+            <h3>How this was produced</h3>
+            <ul class="bullets small" id="provenance-list"></ul>
+            <p class="small">
+              Fields marked “Not specified” were not stated in the recording and
+              were not inferred. Values that could not be traced back to the
+              transcript are discarded rather than guessed.
+            </p>
+          </div>
+        </section>
+      </div>
+
+      <!-- History -------------------------------------------------- -->
+      <aside class="sidebar" aria-labelledby="history-heading">
+        <section class="card">
+          <div class="results-head">
+            <h2 id="history-heading">Previous meetings</h2>
+            <button type="button" class="link-btn" id="history-refresh">
+              Refresh
+            </button>
+          </div>
+          <ul class="history" id="history-list"></ul>
+          <p class="small" id="history-empty">Nothing processed yet.</p>
+        </section>
+
+        <section class="card">
+          <h2>About</h2>
+          <p class="small">
+            <strong>Pipeline:</strong> upload → audio extraction (ffmpeg) →
+            speech recognition (Whisper) → information extraction (a small
+            instruction-tuned language model plus a deterministic rule layer) →
+            structured minutes → PDF/DOCX.
+          </p>
+          <p class="small">
+            Everything runs locally. No API keys, and no data leaves this machine.
+          </p>
+        </section>
+      </aside>
+    </main>
+
+    <!-- Transcript dialog ------------------------------------------- -->
+    <dialog id="transcript-dialog" class="dialog">
+      <div class="dialog-head">
+        <h2>Meeting Transcript</h2>
+        <button type="button" class="btn btn-ghost" id="transcript-close">
+          Close
+        </button>
+      </div>
+      <p class="small" id="transcript-meta"></p>
+      <pre class="transcript" id="transcript-text"></pre>
+    </dialog>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p class="small">
+          College AI/ML project — pretrained open-source models combined with a
+          project-specific dataset, extraction schema and evaluation harness.
+        </p>
+      </div>
+    </footer>
+
+    <script src="script.js"></script>
   </body>
 </html>

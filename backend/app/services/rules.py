@@ -127,18 +127,36 @@ _SENTENCE_STARTERS = {
 
 _NAME = r"[A-Z][a-z]{1,20}"
 
+# A name preceded by a title. Without this, "Dr. Menon will review the draft"
+# is recorded as "Menon", and the same person then appears as "Menon" in one
+# field and "Dr. Menon" in another - inconsistent output for one participant.
+_TITLED_NAME = rf"(?:Dr|Mr|Ms|Mrs|Prof|Sir|Madam)\.?\s+{_NAME}"
+
+# "X will <verb phrase>" also matches narration that is not a commitment:
+# "Lakshmi will walk us through the details." These verbs describe the act of
+# narrating or introducing a topic rather than doing work, so they are filtered
+# out. This matters: narrative sentences sit directly next to real commitments
+# and are the main source of false-positive action items.
+_NON_COMMITTAL_VERBS = re.compile(
+    r"^(?:walk\s+us\s+through|walk\s+through|tell\s+us\s+about|talk\s+(?:us\s+)?through|"
+    r"take\s+us\s+through|explain|present|cover|show\s+us|introduce|"
+    r"give\s+us\s+(?:an?\s+)?(?:update|overview|summary|walkthrough)|"
+    r"be\s+here|join\s+us)\b",
+    re.IGNORECASE,
+)
+
 _ACTION_PATTERNS: list[re.Pattern[str]] = [
     # "Rahul will update the schema documentation by next Monday"
     re.compile(
-        rf"\b(?P<person>{_NAME})\s+will\s+(?P<task>[a-z][^.!?;]{{3,200}})",
+        rf"\b(?P<person>{_TITLED_NAME}|{_NAME})\s+will\s+(?P<task>[a-z][^.!?;]{{3,200}})",
     ),
     # "Priya is going to run the tests"
     re.compile(
-        rf"\b(?P<person>{_NAME})\s+is\s+going\s+to\s+(?P<task>[a-z][^.!?;]{{3,200}})",
+        rf"\b(?P<person>{_TITLED_NAME}|{_NAME})\s+is\s+going\s+to\s+(?P<task>[a-z][^.!?;]{{3,200}})",
     ),
     # "Rahul agreed to update the docs" / "Priya agreed to test it"
     re.compile(
-        rf"\b(?P<person>{_NAME})\s+agreed\s+to\s+(?P<task>[a-z][^.!?;]{{3,200}})",
+        rf"\b(?P<person>{_TITLED_NAME}|{_NAME})\s+agreed\s+to\s+(?P<task>[a-z][^.!?;]{{3,200}})",
     ),
     # First person: "I will prepare the deployment checklist"
     re.compile(
@@ -146,7 +164,7 @@ _ACTION_PATTERNS: list[re.Pattern[str]] = [
     ),
     # "Priya, can you send the report"  (requests carry an implied owner)
     re.compile(
-        rf"\b(?P<person>{_NAME}),\s*(?:can|could|would)\s+you\s+"
+        rf"\b(?P<person>{_TITLED_NAME}|{_NAME}),\s*(?:can|could|would)\s+you\s+"
         r"(?P<task>[a-z][^.!?;]{3,200})",
     ),
 ]
@@ -176,6 +194,15 @@ _DEADLINE_TAIL = re.compile(
     r"\s+(?:that|which|and|but|so|we|i|he|she|they|to)\b.*$", re.IGNORECASE
 )
 
+# A deadline clause at the very end of a task description. Used to avoid
+# repeating the deadline inside the task text, since it is reported as its own
+# field. Anchored to the end on purpose: "review the numbers on the dashboard"
+# must not lose "on the dashboard".
+_TRAILING_DEADLINE = re.compile(
+    r"\s+(?:by|before|on|due|within|no\s+later\s+than)\s+(?:the\s+)?[^.!?;]{2,60}$",
+    re.IGNORECASE,
+)
+
 
 def find_deadline(text: str) -> str:
     """Find a deadline expression near ``text``, or ``NOT_SPECIFIED``."""
@@ -195,8 +222,40 @@ def find_deadline(text: str) -> str:
     return NOT_SPECIFIED
 
 
+def normalise_person(name: str) -> str:
+    """Normalise a captured person name.
+
+    Collapses the optional period after a title ("Dr. Menon" and "Dr Menon"
+    are the same person) and trims surrounding punctuation, so one participant
+    is not reported under two spellings.
+    """
+    cleaned = re.sub(r"\s+", " ", name.strip().strip(",.;:"))
+    cleaned = re.sub(r"^(Dr|Mr|Ms|Mrs|Prof|Sir|Madam)\.\s+", r"\1 ", cleaned)
+    return cleaned
+
+
 def _looks_like_name(token: str) -> bool:
+    """Whether a token is plausibly a person's name.
+
+    Titles are accepted as part of a name, so participant lists keep the form
+    used in the meeting ("Dr. Menon") rather than truncating it.
+    """
+    if re.fullmatch(_TITLED_NAME, token):
+        return True
     return bool(re.fullmatch(_NAME, token)) and token.lower() not in _SENTENCE_STARTERS
+
+
+def _strip_deadline_phrase(task: str) -> str:
+    """Remove a trailing deadline clause from a task description.
+
+    "rerun the baseline experiments by the end of the month" becomes "rerun the
+    baseline experiments", because the deadline is reported separately. Only a
+    trailing clause is removed, so a task that mentions a date as part of its
+    subject is left alone.
+    """
+    stripped = _TRAILING_DEADLINE.sub("", task).strip(" ,;:.-")
+    # Never strip so much that the task stops being meaningful.
+    return stripped if len(stripped.split()) >= 3 else task
 
 
 def find_action_items(text: str, known_people: list[str] | None = None) -> list[ActionItem]:
@@ -215,9 +274,11 @@ def find_action_items(text: str, known_people: list[str] | None = None) -> list[
         for match in pattern.finditer(text):
             spans = match.groupdict()
             task = spans.get("task") or ""
-            person = spans.get("person") or NOT_SPECIFIED
+            person = normalise_person(spans.get("person") or "") or NOT_SPECIFIED
             task = _tidy(task)
             if len(task.split()) < 3:
+                continue
+            if _NON_COMMITTAL_VERBS.match(task):
                 continue
 
             # Look for a deadline in the same sentence as the commitment.
@@ -225,6 +286,12 @@ def find_action_items(text: str, known_people: list[str] | None = None) -> list[
             end = text.find(".", match.end())
             sentence = text[start + 1 : end if end != -1 else len(text)]
             deadline = find_deadline(sentence)
+
+            # The task text stops before the deadline phrase, otherwise the
+            # deadline is duplicated: it appears once as its own field and
+            # again inside the task ("rerun the experiments by the end of the
+            # month"). The deadline belongs in its field.
+            task = _strip_deadline_phrase(task)
 
             # "No deadlines are needed for that one yet" -> not a commitment.
             if _NO_DEADLINE.search(sentence) and "deadline" in task.lower():
@@ -251,9 +318,9 @@ def find_action_items(text: str, known_people: list[str] | None = None) -> list[
 # A person's name typically appears as a capitalised token that is not a
 # sentence starter and is near a speech verb or a vocative.
 _SPEECH_CUE = re.compile(
-    r"(?:great work|thanks|thank you|well done|over to|as|per)\s+(?P<name>[A-Z][a-z]{1,20})"
+    rf"(?:great work|thanks|thank you|well done|over to|as|per)\s+(?P<name>{_TITLED_NAME}|{_NAME})"
 )
-_VOCATIVE = re.compile(r"(?:^|[,.]\s+)(?P<name>[A-Z][a-z]{1,20})\s*[,]")
+_VOCATIVE = re.compile(rf"(?:^|[,.]\s+)(?P<name>{_TITLED_NAME}|{_NAME})\s*[,]")
 
 
 def find_participants(text: str, action_people: list[str] | None = None) -> list[str]:
@@ -269,10 +336,12 @@ def find_participants(text: str, action_people: list[str] | None = None) -> list
     seen: set[str] = set()
 
     def add(candidate: str) -> None:
-        candidate = candidate.strip(" .,;:")
+        candidate = normalise_person(candidate)
         if not _looks_like_name(candidate):
             return
         key = candidate.lower()
+        # Do not list "Menon" and "Dr Menon" as two different attendees.
+        key = re.sub(r"^(dr|mr|ms|mrs|prof|sir|madam)\s+", "", key)
         if key not in seen:
             seen.add(key)
             names.append(candidate)

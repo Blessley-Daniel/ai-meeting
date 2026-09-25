@@ -213,6 +213,8 @@ def render_text(mom: MomDocument) -> str:
         add(f"Source recording: {mom.source_filename}")
     if mom.asr_model:
         add(f"Speech recognition: {mom.asr_model}")
+    if mom.extraction_model:
+        add(f"Information extraction: {mom.extraction_model}")
     if mom.generated_at:
         add(f"Generated at: {mom.generated_at.isoformat(timespec='seconds')}Z")
     add(
@@ -292,6 +294,8 @@ def render_markdown(mom: MomDocument) -> str:
         add(f"_Source recording: {mom.source_filename}_")
     if mom.asr_model:
         add(f"_Speech recognition: {mom.asr_model}_")
+    if mom.extraction_model:
+        add(f"_Information extraction: {mom.extraction_model}_")
     if mom.generated_at:
         add(f"_Generated at: {mom.generated_at.isoformat(timespec='seconds')}Z_")
 

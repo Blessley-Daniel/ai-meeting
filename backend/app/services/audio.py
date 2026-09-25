@@ -18,6 +18,7 @@ Both are invoked as subprocesses with an explicit argument list and
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -59,6 +60,25 @@ def _require_executable(name: str) -> str:
     return path
 
 
+def _sanitise_ffmpeg_message(message: str, path: Path) -> str:
+    """Strip server-side paths out of an ffmpeg/ffprobe message.
+
+    Tools like ffprobe echo the path they were given. That path is an internal
+    implementation detail and leaks the deployment layout into a user-facing
+    error, so replace it with the filename the user recognises. A leading
+    "filename: " prefix is then dropped, because callers already name the file
+    and repeating it reads as a stutter. A missing message becomes "unknown
+    error" rather than an empty string, since ffmpeg can fail silently.
+    """
+    cleaned = (message or "").strip()
+    if not cleaned:
+        return "unknown error"
+
+    cleaned = cleaned.replace(str(path), path.name)
+    cleaned = re.sub(rf"^{re.escape(path.name)}:\s*", "", cleaned)
+    return cleaned or "unknown error"
+
+
 def probe_media(path: Path) -> MediaInfo:
     """Inspect a media file with ffprobe.
 
@@ -95,10 +115,8 @@ def probe_media(path: Path) -> MediaInfo:
 
     if completed.returncode != 0:
         detail = (completed.stderr or "").strip().splitlines()
-        raise MediaProcessingError(
-            f"ffprobe could not read {path.name}: "
-            f"{detail[-1] if detail else 'unknown error'}"
-        )
+        reason = _sanitise_ffmpeg_message(detail[-1] if detail else "", path)
+        raise MediaProcessingError(f"ffprobe could not read {path.name}: {reason}")
 
     try:
         payload = json.loads(completed.stdout or "{}")
@@ -183,9 +201,13 @@ def extract_audio(source: Path, destination: Path) -> MediaInfo:
     if completed.returncode != 0 or not destination.is_file():
         destination.unlink(missing_ok=True)
         detail = (completed.stderr or "").strip().splitlines()
+        reason = (
+            _sanitise_ffmpeg_message(detail[-1], source)
+            if detail
+            else f"exit code {completed.returncode}"
+        )
         raise MediaProcessingError(
-            f"ffmpeg failed to extract audio from {source.name}: "
-            f"{detail[-1] if detail else f'exit code {completed.returncode}'}"
+            f"ffmpeg failed to extract audio from {source.name}: {reason}"
         )
 
     return info

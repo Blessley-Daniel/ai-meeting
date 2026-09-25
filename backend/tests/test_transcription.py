@@ -270,6 +270,146 @@ def test_transcript_endpoint_returns_stored_transcript(
 
 
 # --------------------------------------------------------------------------
+# Row lifecycle (regression)
+# --------------------------------------------------------------------------
+
+
+def _child_rows(meeting_id: int) -> tuple[Transcript | None, MinutesDocument | None]:
+    """Fetch the transcript and minutes for a meeting, or None if absent."""
+    from sqlalchemy import select
+
+    from app.database.session import SessionLocal
+    from app.models.minutes import MinutesDocument
+    from app.models.transcript import Transcript
+
+    with SessionLocal() as db:
+        transcript = db.scalar(
+            select(Transcript).where(Transcript.meeting_id == meeting_id)
+        )
+        minutes = db.scalar(
+            select(MinutesDocument).where(MinutesDocument.meeting_id == meeting_id)
+        )
+    return transcript, minutes
+
+
+def test_deleting_meeting_removes_child_rows(
+    client: TestClient, sample_mp4: Path, monkeypatch
+) -> None:
+    """Deleting a meeting must take its transcript and minutes with it.
+
+    Regression: SQLite leaves foreign-key enforcement off unless
+    ``PRAGMA foreign_keys=ON`` is set per connection, so ``ON DELETE CASCADE``
+    never fired and every delete left orphaned child rows behind.
+    """
+    from app.database.session import SessionLocal
+    from app.models.minutes import MinutesDocument
+
+    meeting_id = _upload_and_extract(client, sample_mp4)
+    monkeypatch.setattr(
+        transcription,
+        "load_model",
+        lambda *_: _FakeModel([_FakeSegment(0.0, 3.0, " Some text.")]),
+    )
+    assert client.post(f"/api/meetings/{meeting_id}/transcribe").json()["succeeded"]
+
+    with SessionLocal() as db:
+        db.add(MinutesDocument(meeting_id=meeting_id, extraction={"title": "T"}))
+        db.commit()
+
+    transcript, minutes = _child_rows(meeting_id)
+    assert transcript is not None
+    assert minutes is not None
+
+    assert client.delete(f"/api/meetings/{meeting_id}").status_code == 204
+
+    transcript, minutes = _child_rows(meeting_id)
+    assert transcript is None
+    assert minutes is None
+
+
+def test_retranscribing_existing_meeting_succeeds(
+    client: TestClient, sample_mp4: Path, monkeypatch
+) -> None:
+    """Re-running the transcription stage must replace, not corrupt, the row.
+
+    Regression: the replacement path deleted the old Transcript row while
+    meeting.transcript still referenced it, so the status write cascaded to a
+    deleted instance and sqlalchemy raised InvalidRequestError.
+    """
+    from app.database.session import SessionLocal
+    from app.models.meeting import Meeting
+    from app.services import pipeline
+
+    meeting_id = _upload_and_extract(client, sample_mp4)
+    monkeypatch.setattr(
+        transcription,
+        "load_model",
+        lambda *_: _FakeModel([_FakeSegment(0.0, 3.0, " First pass.")]),
+    )
+    with SessionLocal() as db:
+        meeting = pipeline.transcribe_meeting(db, db.get(Meeting, meeting_id))
+        assert meeting.status.value == "transcribed"
+
+    monkeypatch.setattr(
+        transcription,
+        "load_model",
+        lambda *_: _FakeModel(
+            [
+                _FakeSegment(0.0, 3.0, " Second pass, revised."),
+                _FakeSegment(3.0, 5.0, " Extra detail."),
+            ]
+        ),
+    )
+    with SessionLocal() as db:
+        meeting = pipeline.transcribe_meeting(db, db.get(Meeting, meeting_id))
+        assert meeting.status.value == "transcribed"
+
+    transcript, _ = _child_rows(meeting_id)
+    assert len(transcript.segments) == 2
+    assert "Second pass" in transcript.text
+    # The old text must be replaced, not appended to or left behind.
+    assert "First pass" not in transcript.text
+
+
+def test_retranscribing_invalidates_previous_minutes(
+    client: TestClient, sample_mp4: Path, monkeypatch
+) -> None:
+    """Minutes describe a transcript, so a new transcript makes them stale.
+
+    The stale minutes are cleared in place rather than deleted, because the
+    relationship holds a live reference to them while the status is written.
+    """
+    from app.database.session import SessionLocal
+    from app.models.meeting import Meeting
+    from app.models.minutes import MinutesDocument
+    from app.services import pipeline
+
+    meeting_id = _upload_and_extract(client, sample_mp4)
+    with SessionLocal() as db:
+        db.add(
+            MinutesDocument(
+                meeting_id=meeting_id,
+                extraction={"title": "Old"},
+                text="OLD MINUTES",
+            )
+        )
+        db.commit()
+
+    monkeypatch.setattr(
+        transcription,
+        "load_model",
+        lambda *_: _FakeModel([_FakeSegment(0.0, 3.0, " Fresh transcript.")]),
+    )
+    with SessionLocal() as db:
+        pipeline.transcribe_meeting(db, db.get(Meeting, meeting_id))
+
+    _, minutes = _child_rows(meeting_id)
+    assert minutes is not None
+    assert minutes.extraction == {}
+    assert minutes.text == ""
+
+
+# --------------------------------------------------------------------------
 # Real Whisper integration test (opt-in)
 # --------------------------------------------------------------------------
 
