@@ -85,3 +85,19 @@ class EmptyTranscriptError(MeetingMinutesError):
             f"No speech was recognised in {filename!r}. The recording may be "
             "silent, or contain only music or background noise."
         )
+
+
+class ExtractionError(MeetingMinutesError):
+    """The language model could not produce usable structured information.
+
+    Covers a missing model, a failed generation, and a response that could not
+    be recovered into valid JSON even after repair.
+    """
+
+
+class MomGenerationError(MeetingMinutesError):
+    """Minutes of Meeting could not be rendered from an extraction."""
+
+
+class DocumentExportError(MeetingMinutesError):
+    """A PDF or DOCX report could not be written."""

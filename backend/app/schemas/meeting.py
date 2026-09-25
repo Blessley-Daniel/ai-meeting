@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.meeting import MediaType, MeetingStatus
+from app.schemas.extraction import NOT_SPECIFIED
 
 
 class MeetingRead(BaseModel):
@@ -99,3 +100,88 @@ class TranscriptionResultOut(BaseModel):
     succeeded: bool
     error_message: str | None = None
     transcript: TranscriptRead | None = None
+
+
+# ---------------------------------------------------------------------------
+# Information extraction
+# ---------------------------------------------------------------------------
+
+
+class ActionItemRead(BaseModel):
+    """A single action item."""
+
+    task: str
+    responsible_person: str = NOT_SPECIFIED
+    deadline: str = NOT_SPECIFIED
+
+
+class ExtractionRead(BaseModel):
+    """Structured information extracted from a meeting transcript."""
+
+    title: str = NOT_SPECIFIED
+    date: str = NOT_SPECIFIED
+    time: str = NOT_SPECIFIED
+    participants: list[str] = Field(default_factory=list)
+    overview: str = NOT_SPECIFIED
+    discussion_points: list[str] = Field(default_factory=list)
+    decisions: list[str] = Field(default_factory=list)
+    action_items: list[ActionItemRead] = Field(default_factory=list)
+    conclusion: str = NOT_SPECIFIED
+
+
+class ExtractionDiagnosticsRead(BaseModel):
+    """How an extraction was produced, for transparency in the interface."""
+
+    model_name: str = ""
+    rules_used: list[str] = Field(default_factory=list)
+    dropped_ungrounded: dict[str, list[str]] = Field(default_factory=dict)
+    extraction_seconds: float | None = None
+
+
+class ExtractionResultOut(BaseModel):
+    """Outcome of running the analysis stage.
+
+    As with the other stages, HTTP 200 even when the job failed; the reason is
+    in ``error_message``.
+    """
+
+    meeting: MeetingRead
+    succeeded: bool
+    error_message: str | None = None
+    extraction: ExtractionRead | None = None
+    diagnostics: ExtractionDiagnosticsRead | None = None
+
+
+# ---------------------------------------------------------------------------
+# Minutes of Meeting
+# ---------------------------------------------------------------------------
+
+
+class MinutesRead(BaseModel):
+    """Generated Minutes of Meeting."""
+
+    meeting_id: int
+    title: str = NOT_SPECIFIED
+    extraction: ExtractionRead
+    text: str = ""
+    has_pdf: bool = False
+    has_docx: bool = False
+    generated_at: datetime | None = None
+
+
+class MinutesResultOut(BaseModel):
+    """Outcome of running the minutes-generation stage."""
+
+    meeting: MeetingRead
+    succeeded: bool
+    error_message: str | None = None
+    minutes: MinutesRead | None = None
+
+
+class ProcessResultOut(BaseModel):
+    """Outcome of running the whole pipeline in one request."""
+
+    meeting: MeetingRead
+    succeeded: bool
+    error_message: str | None = None
+    minutes: MinutesRead | None = None

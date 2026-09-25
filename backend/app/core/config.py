@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     upload_dir: Path = PROJECT_ROOT / "uploads"
     audio_dir: Path = PROJECT_ROOT / "derived" / "audio"
     generated_dir: Path = PROJECT_ROOT / "generated"
+    # Exported PDF/DOCX reports live under generated/ so a single directory
+    # holds everything the system produced for the user to download.
+    reports_dir: Path | None = None
     models_dir: Path = PROJECT_ROOT / "models"
     dataset_dir: Path = PROJECT_ROOT / "datasets" / "processed"
     frontend_dir: Path = PROJECT_ROOT / "frontend"
@@ -95,12 +98,23 @@ class Settings(BaseSettings):
     def max_upload_size_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024
 
+    @property
+    def reports_path(self) -> Path:
+        """Directory for exported reports, defaulting to ``generated/reports``."""
+        return self.reports_dir or (self.generated_dir / "reports")
+
+    @property
+    def model_config_path(self) -> Path:
+        """Where the fine-tuned LoRA adapter is kept, if one was trained."""
+        return self.models_dir / "mom-lora"
+
     def ensure_directories(self) -> None:
         """Create every directory the application writes to."""
         for directory in (
             self.upload_dir,
             self.audio_dir,
             self.generated_dir,
+            self.reports_path,
             self.models_dir,
             self.dataset_dir,
         ):

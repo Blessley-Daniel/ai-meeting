@@ -21,6 +21,7 @@ class MeetingStatus(str, enum.Enum):
     TRANSCRIBING = "transcribing"
     TRANSCRIBED = "transcribed"
     ANALYSING = "analysing"
+    ANALYSED = "analysed"
     GENERATING = "generating"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -79,6 +80,15 @@ class Meeting(Base):
     # transcript rather than leaving an orphan row.
     transcript = relationship(
         "Transcript",
+        back_populates="meeting",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    # One-to-one with the generated minutes, deleted along with the meeting.
+    minutes = relationship(
+        "MinutesDocument",
         back_populates="meeting",
         uselist=False,
         cascade="all, delete-orphan",
