@@ -40,6 +40,19 @@ class MeetingList(BaseModel):
     items: list[MeetingRead]
 
 
+class AudioExtractionResult(BaseModel):
+    """Outcome of running the audio-extraction stage for one meeting.
+
+    Returned with HTTP 200 even when ``status`` is ``failed``: the request
+    itself succeeded, it is the *media* that could not be processed. The
+    reason is carried in ``error_message``.
+    """
+
+    meeting: MeetingRead
+    succeeded: bool
+    error_message: str | None = None
+
+
 class ErrorResponse(BaseModel):
     """Consistent error body for all 4xx/5xx responses."""
 

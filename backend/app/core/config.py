@@ -45,6 +45,7 @@ class Settings(BaseSettings):
 
     # ---------- Storage locations ----------
     upload_dir: Path = PROJECT_ROOT / "uploads"
+    audio_dir: Path = PROJECT_ROOT / "uploads" / "audio"
     generated_dir: Path = PROJECT_ROOT / "generated"
     models_dir: Path = PROJECT_ROOT / "models"
     dataset_dir: Path = PROJECT_ROOT / "datasets" / "processed"
@@ -91,6 +92,7 @@ class Settings(BaseSettings):
         """Create every directory the application writes to."""
         for directory in (
             self.upload_dir,
+            self.audio_dir,
             self.generated_dir,
             self.models_dir,
             self.dataset_dir,

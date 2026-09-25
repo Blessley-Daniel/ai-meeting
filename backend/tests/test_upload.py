@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
+from tests.conftest import requires_ffmpeg
 
 
 def _upload(client: TestClient, name: str, data: bytes, content_type: str):
@@ -35,6 +36,7 @@ def test_upload_audio_creates_job(client: TestClient, sample_wav: Path) -> None:
     assert "stored_path" not in body
 
 
+@requires_ffmpeg
 def test_upload_video_is_classified_as_video(client: TestClient, sample_mp4: Path) -> None:
     response = _upload(client, "meet.mp4", sample_mp4.read_bytes(), "video/mp4")
 

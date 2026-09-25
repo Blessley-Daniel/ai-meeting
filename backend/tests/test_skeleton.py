@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.core.config import get_settings
+from tests.conftest import requires_ffmpeg
 
 
 def test_settings_use_project_paths(app_env) -> None:
@@ -23,10 +24,20 @@ def test_health_endpoint_reports_environment(client) -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert body["version"]
-    # ffmpeg was installed as a system dependency, so it must be detected.
-    assert body["environment"]["ffmpeg"] is True
+    # ffmpeg is a system dependency; the endpoint must report its presence as
+    # a boolean rather than crashing when it is missing.
+    assert isinstance(body["environment"]["ffmpeg"], bool)
+    assert isinstance(body["environment"]["ffprobe"], bool)
     assert "packages" in body["environment"]
     assert "whisper_model_size" in body["config"]
+
+
+@requires_ffmpeg
+def test_health_endpoint_detects_ffmpeg_when_installed(client) -> None:
+    """When ffmpeg *is* installed, the health report must say so."""
+    body = client.get("/api/health").json()
+    assert body["environment"]["ffmpeg"] is True
+    assert body["environment"]["ffprobe"] is True
 
 
 def test_ensure_directories_is_idempotent(app_env) -> None:

@@ -5,17 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.database.session import get_db
-from app.models.meeting import Meeting
-from app.schemas.meeting import MeetingList, MeetingRead
-from app.services import storage
+from app.models.meeting import Meeting, MeetingStatus
+from app.schemas.meeting import AudioExtractionResult, MeetingList, MeetingRead
+from app.services import pipeline, storage
 from app.utils.errors import (
     EmptyFileError,
+    FFmpegNotFoundError,
     FileTooLargeError,
-    MediaNotFoundError,
     UnsupportedFileTypeError,
 )
 
@@ -85,6 +87,47 @@ def _get_or_404(db: Session, meeting_id: int) -> Meeting:
             status.HTTP_404_NOT_FOUND, f"No meeting found for id {meeting_id}"
         )
     return meeting
+
+
+@router.post(
+    "/{meeting_id}/extract-audio",
+    response_model=AudioExtractionResult,
+    summary="Extract a normalised audio track from the recording",
+    responses={
+        404: {"description": "Unknown meeting id"},
+        409: {"description": "Recording has already advanced past this stage"},
+        503: {"description": "ffmpeg is not installed"},
+    },
+)
+async def extract_audio_endpoint(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+) -> AudioExtractionResult:
+    """Run the audio-extraction stage.
+
+    ffmpeg is synchronous and CPU-bound, so it is dispatched to a worker
+    thread; running it inline would block the event loop for every other
+    request.
+    """
+    meeting = _get_or_404(db, meeting_id)
+
+    if meeting.status is not MeetingStatus.UPLOADED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Meeting {meeting_id} is in state {meeting.status.value!r}; "
+            "audio extraction runs once, from the 'uploaded' state.",
+        )
+
+    try:
+        meeting = await run_in_threadpool(pipeline.extract_audio_for_meeting, db, meeting)
+    except FFmpegNotFoundError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+    return AudioExtractionResult(
+        meeting=MeetingRead.model_validate(meeting),
+        succeeded=meeting.status is MeetingStatus.AUDIO_EXTRACTED,
+        error_message=meeting.error_message,
+    )
 
 
 @router.get("/{meeting_id}", response_model=MeetingRead, summary="Get one meeting")

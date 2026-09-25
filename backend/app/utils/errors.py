@@ -48,3 +48,25 @@ class MediaNotFoundError(MeetingMinutesError):
 
 class MediaProcessingError(MeetingMinutesError):
     """ffmpeg/ffprobe failed to process the media."""
+
+
+class FFmpegNotFoundError(MeetingMinutesError):
+    """The ffmpeg or ffprobe executable is not available on PATH."""
+
+    def __init__(self, executable: str) -> None:
+        self.executable = executable
+        super().__init__(
+            f"{executable!r} was not found on PATH. "
+            "Install it with: sudo apt-get install -y ffmpeg"
+        )
+
+
+class NoAudioStreamError(MeetingMinutesError):
+    """The recording contains no audio track, so it cannot be transcribed."""
+
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+        super().__init__(
+            f"{filename!r} has no audio stream. "
+            "Please upload a recording that contains speech."
+        )

@@ -17,6 +17,7 @@ class MeetingStatus(str, enum.Enum):
 
     UPLOADED = "uploaded"
     EXTRACTING_AUDIO = "extracting_audio"
+    AUDIO_EXTRACTED = "audio_extracted"
     TRANSCRIBING = "transcribing"
     ANALYSING = "analysing"
     GENERATING = "generating"

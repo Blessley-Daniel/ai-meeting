@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import shutil
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -19,6 +20,16 @@ import pytest
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
+
+# ffmpeg is a *system* dependency and does not live inside the virtual
+# environment, so it can disappear when a container is reset. Tests that need
+# it skip with a clear message instead of failing with a confusing error.
+_HAS_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+
+requires_ffmpeg = pytest.mark.skipif(
+    not _HAS_FFMPEG,
+    reason="ffmpeg/ffprobe not on PATH - install with: sudo apt-get install -y ffmpeg",
+)
 
 
 @pytest.fixture()
@@ -80,6 +91,49 @@ def sample_mp4(tmp_path: Path) -> Path:
             "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
             "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-shortest",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return path
+
+
+@pytest.fixture()
+def silent_mp4(tmp_path: Path) -> Path:
+    """A 2 s video-only MP4: no audio stream at all.
+
+    Used to prove the pipeline reports a clear error instead of crashing when
+    someone uploads a screen recording made without a microphone.
+    """
+    import subprocess
+
+    path = tmp_path / "silent.mp4"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=2",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            "-an",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return path
+
+
+@pytest.fixture()
+def m4a_audio(tmp_path: Path) -> Path:
+    """A 2 s audio-only file in a compressed container (AAC in M4A)."""
+    import subprocess
+
+    path = tmp_path / "voice.m4a"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+            "-c:a", "aac",
             str(path),
         ],
         check=True,
